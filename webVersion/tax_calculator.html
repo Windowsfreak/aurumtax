@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Krypto Steuerreport (FIFO)</title>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #334155;
+            --card-bg: #ffffff;
+            --primary-color: #0ea5e9;
+            --border-color: #e2e8f0;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 40px;
+            font-weight: 800;
+        }
+
+        .upload-section {
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            text-align: center;
+            margin-bottom: 40px;
+            border: 2px dashed var(--border-color);
+            transition: border-color 0.2s;
+        }
+
+        .upload-section:hover {
+            border-color: var(--primary-color);
+        }
+
+        .upload-btn {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            display: inline-block;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .upload-btn:hover {
+            background-color: #0284c7;
+            transform: translateY(-1px);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .report-year {
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .report-year h2 {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: #0f172a;
+        }
+
+        .meta {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+
+        h3 {
+            color: #0f172a;
+            font-size: 1.125rem;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        .tax-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .tax-table td {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tax-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .tax-table td:last-child {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .amount-positive {
+            color: var(--success-color);
+            font-weight: 500;
+        }
+
+        .amount-negative {
+            color: var(--danger-color);
+            font-weight: 500;
+        }
+
+        .fw-bold {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #94a3b8;
+            padding: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>AURUM Steuerreport Generator (DE)</h1>
+
+        <div class="upload-section">
+            <p style="margin-top: 0; margin-bottom: 20px; font-size: 1.1rem; color: #475569;">
+                Laden Sie hier Ihren "Summ" (ehemals CryptoTaxCalculator) CSV-Export hoch.
+            </p>
+            <label class="upload-btn">
+                CSV Datei auswählen
+                <input type="file" id="csvFileInput" accept=".csv">
+            </label>
+
+            <div style="margin-top: 25px; text-align: left;">
+                <details style="background: #f1f5f9; padding: 15px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                    <summary style="cursor: pointer; font-weight: 600; color: #475569;">Zusätzliche Informationen &
+                        Hilfe</summary>
+                    <div style="margin-top: 10px; font-size: 0.95rem; color: #334155;">
+                        <p><strong>Wichtiger Hinweis:</strong> Dies ist die "Lite" Version des Steuertools. Es wendet
+                            <strong>deutsches Steuerrecht</strong> an (FIFO-Verfahren, 1-jährige Haltefrist für
+                            Steuerfreiheit bei privaten Veräußerungsgeschäften).
+                        </p>
+                        <p>Dieses Tool wurde speziell für den <em>summ_export</em> (beispielsweise generiert aus dem
+                            Aurum-Steuertool) entwickelt. Es berechnet die Steuerlast <strong>ausschließlich</strong>
+                            für ein einziges Fremdwährungskonto und berücksichtigt <strong>keine</strong> weiteren
+                            Gebühren oder Provisionen.</p>
+                        <p>Zukünftige Gewinne/Verluste (die in der Exportdatei oft mit dem fiktiven Datum "2099" oder
+                            zum Ende des Jahres markiert sind) basieren auf dem aktuellen Kontosaldo und zeigen eine
+                            Prognose der zu erwartenden steuerlichen Auswirkungen bei einem fiktiven Verkauf.</p>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <div id="reportsContainer">
+            <div class="empty-state">Noch keine Daten geladen. Bitte laden Sie eine Export-Datei hoch.</div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('csvFileInput').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const text = e.target.result;
+                processData(text);
+            };
+            reader.readAsText(file);
+        });
+
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(l => l.trim().length > 0);
+            if (lines.length === 0) return [];
+
+            const parseLine = (line) => {
+                const row = [];
+                let inQuotes = false;
+                let current = '';
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        row.push(current);
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                row.push(current);
+                return row;
+            };
+
+            const headers = parseLine(lines[0]);
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const row = parseLine(lines[i]);
+                if (row.length === headers.length || row.length > 2) {
+                    const obj = {};
+                    for (let j = 0; j < headers.length; j++) {
+                        obj[headers[j]] = row[j];
+                    }
+                    data.push(obj);
+                }
+            }
+            return data;
+        }
+
+        function processData(csvText) {
+            const parsed = parseCSV(csvText);
+
+            const events = [];
+            for (const row of parsed) {
+                const typeVar = row['Type'];
+                if (!typeVar) continue;
+                const type = typeVar.toLowerCase();
+
+                if (type !== 'buy' && type !== 'sell') continue;
+
+                const timestamp = row['Timestamp (UTC)'];
+                const baseAmtStr = row['Base Amount (Optional)'] || row['Base Amount'];
+                const baseAmt = parseFloat(baseAmtStr);
+                const quoteAmtStr = row['Quote Amount (Optional)'] || row['Quote Amount'];
+                const quoteAmt = parseFloat(quoteAmtStr);
+
+                if (isNaN(baseAmt) || isNaN(quoteAmt)) continue;
+
+                const t = timestamp.replace(" ", "T") + "Z";
+                const dateObj = new Date(t);
+
+                events.push({
+                    timestamp: timestamp,
+                    date: dateObj,
+                    type: type,
+                    baseAmount: baseAmt,
+                    quoteAmount: quoteAmt
+                });
+            }
+
+            events.sort((a, b) => a.date - b.date);
+
+            const queue = [];
+            const yearStats = {};
+
+            let totalTx = events.length;
+
+            // Setup base stats per year appearing in records
+            events.forEach(e => {
+                const yr = e.date.getFullYear();
+                if (!yearStats[yr]) {
+                    yearStats[yr] = {
+                        year: yr,
+                        txCount: 0,
+                        salePrice: 0,
+                        acqCost: 0,
+                        profitLong: 0,
+                        profitShort: 0
+                    };
+                }
+                yearStats[yr].txCount++;
+            });
+
+            for (const event of events) {
+                if (event.type === 'buy') {
+                    queue.push({
+                        date: event.date,
+                        amount: event.baseAmount,
+                        costEur: event.quoteAmount
+                    });
+                } else if (event.type === 'sell') {
+                    const yr = event.date.getFullYear();
+                    let amountToSell = event.baseAmount;
+                    const revenueRate = event.quoteAmount / event.baseAmount;
+
+                    while (amountToSell > 1e-8 && queue.length > 0) {
+                        const buy = queue[0];
+                        const chunkAmt = Math.min(buy.amount, amountToSell);
+
+                        const chunkCost = buy.costEur * (chunkAmt / buy.amount);
+                        const chunkRev = revenueRate * chunkAmt;
+                        const profit = chunkRev - chunkCost;
+
+                        const limitDate = new Date(buy.date);
+                        limitDate.setFullYear(limitDate.getFullYear() + 1);
+                        const isLongTerm = event.date > limitDate;
+
+                        yearStats[yr].salePrice += chunkRev;
+                        yearStats[yr].acqCost += chunkCost;
+
+                        if (isLongTerm) {
+                            yearStats[yr].profitLong += profit;
+                        } else {
+                            yearStats[yr].profitShort += profit;
+                        }
+
+                        amountToSell -= chunkAmt;
+                        buy.amount -= chunkAmt;
+                        buy.costEur -= chunkCost;
+
+                        if (buy.amount < 1e-8) {
+                            queue.shift();
+                        }
+                    }
+                }
+            }
+
+            renderReports(yearStats, totalTx);
+        }
+
+        function formatEur(num) {
+            return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+        }
+
+        function formatNumber(num) {
+            return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 6 });
+        }
+
+        function renderReports(yearStats, totalTx) {
+            const container = document.getElementById('reportsContainer');
+            container.innerHTML = '';
+
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('de-DE');
+
+            const pad0 = (n) => n < 10 ? '0' + n : n;
+            const timeStr = pad0(now.getHours()) + ':' + pad0(now.getMinutes()) + ':' + pad0(now.getSeconds());
+
+            const years = Object.keys(yearStats).sort();
+
+            // Loop over the years. Some years might just have buys and 0 profit/sells, we will render it fully to match expectation
+            let htmlContent = '';
+
+            years.forEach((yr, index) => {
+                const st = yearStats[yr];
+
+                let taxable = 0;
+                if (st.profitShort >= 1000) {
+                    taxable = st.profitShort;
+                } else if (st.profitShort < 0) {
+                    taxable = st.profitShort; // Losses are kept
+                } else {
+                    taxable = 0;
+                }
+
+                const isFuture = (yr > now.getFullYear());
+                const reportTitle = isFuture
+                    ? `ANLAGE SO - Prognose zukünftiger Verkäufe (Fiktiver Stand)`
+                    : `ANLAGE SO (SONSTIGE EINKÜNFTE)<br>01.01.${yr} - 31.12.${yr}`;
+
+                const periodLabel = isFuture
+                    ? `Offener Kontosaldo`
+                    : `1 January ${yr} - 31 December ${yr}`;
+
+                const getAmountClass = (val) => {
+                    if (val > 0) return 'amount-positive';
+                    if (val < 0) return 'amount-negative';
+                    return '';
+                };
+
+                htmlContent += `
+            <div class="report-year">
+              <h2>${reportTitle}</h2>
+              <div class="meta">Generiert am: ${dateStr}, ${timeStr} Uhr</div>
+
+              <h3>Berichtsdetails</h3>
+              <p>Währung: EUR<br>
+              Gesamttransaktionen (gesamt): ${totalTx}<br>
+              Transaktionen in ( ${periodLabel} ): ${st.txCount}</p>
+
+              <h3>Steuereinstellungen</h3>
+              <p>Inventarisierungsmethode: Wer zuerst kommt, mahlt zuerst<br>
+              Kostenbasisverfolgung: Universal</p>
+
+              <h3>Sonstige Einkünfte aus privaten Veräußerungsgeschäften nach 23 EStG</h3>
+              <table class="tax-table">
+                <tr><td>Veräußerungspreis</td><td>${formatEur(st.salePrice)}</td></tr>
+                <tr><td>Anschaffungskosten</td><td>${formatEur(st.acqCost)}</td></tr>
+                <tr><td>Veräußerungsgewinn /-verlust außerhalb der 1-jährigen Haltefrist</td><td class="${getAmountClass(st.profitLong)}">${formatNumber(st.profitLong)} €</td></tr>
+                <tr><td>Veräußerungsgewinn /-verlust innerhalb der 1-jährigen Haltefrist</td><td class="${getAmountClass(st.profitShort)}">${formatNumber(st.profitShort)} €</td></tr>
+                <tr><td>Freigrenze (Überschreitung der Freigrenze führt zur Besteuerung des gesamten Betrags)</td><td>1.000,00 €</td></tr>
+                <tr><td class="fw-bold">Sonstige Einkünfte aus privaten Veräußerungsgeschäften nach 23 EStG (einzutragen in Anlage SO)</td><td class="fw-bold">${formatEur(taxable)}</td></tr>
+              </table>
+
+              <button onclick="toggleUnused('unused-${index}')" style="margin-top: 20px; background: transparent; border: 1px solid var(--border-color); color: var(--text-color); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem;">
+                  Zusätzliche (ungenutzte) Felder ein-/ausblenden
+              </button>
+
+              <div id="unused-${index}" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px dashed var(--border-color);">
+                  <h3>Einkünfte aus Kapitalvermögen nach 20 EStG</h3>
+                  <table class="tax-table">
+                    <tr><td>Summe aller Gewinne aus Margin, Derivate, Futures</td><td>0,00 €</td></tr>
+                    <tr><td>Summe aller Verluste aus Margin, Derivate, Futures</td><td>0,00 €</td></tr>
+                    <tr><td>Nettosumme der Erträge aus Kapitalvermögen</td><td>0,00 €</td></tr>
+                  </table>
+
+                  <h3>Sonstige Einkünfte nach 22 Nr. 3 EStG</h3>
+                  <table class="tax-table">
+                    <tr><td>Summe Staking</td><td>0,00 €</td></tr>
+                    <tr><td>Summe Zinsen</td><td>0,00 €</td></tr>
+                    <tr><td>Summe sonstige Einnahmen</td><td>0,00 €</td></tr>
+                    <tr><td>Summe Honorar</td><td>0,00 €</td></tr>
+                    <tr><td>Nettosumme der Erträge aus Kapitalvermögen</td><td>0,00 €</td></tr>
+                    <tr><td>Freigrenze (Überschreitung der Freigrenze führt zur Besteuerung des gesamten Betrags)</td><td>256,00 €</td></tr>
+                    <tr><td class="fw-bold">Sonstige Einkünfte im Sinne 22 Nr. 3 EStG (einzutragen in Anlage SO)</td><td class="fw-bold">0,00 €</td></tr>
+                  </table>
+
+                  <h3>Sonstige Gewinne/Verluste im Zusammenhang mit Kryptowährungen</h3>
+                  <table class="tax-table">
+                    <tr><td>Ausgegangene Spenden und Schenkungen</td><td>0,00 €</td></tr>
+                    <tr><td>Gestohlene</td><td>0,00 €</td></tr>
+                    <tr><td>Verlorene</td><td>0,00 €</td></tr>
+                    <tr><td class="fw-bold">Gesamte sonstige Gewinne/Verluste im Zusammenhang mit Kryptowährungen</td><td class="fw-bold">0,00 €</td></tr>
+                  </table>
+              </div>
+            </div>
+            `;
+            });
+
+            container.innerHTML = htmlContent;
+        }
+        function toggleUnused(id) {
+            const el = document.getElementById(id);
+            if (el.style.display === 'none') {
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>
