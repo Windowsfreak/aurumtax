@@ -46,7 +46,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: binaries
-          path: build/
+          path: build/dist/
 
       - name: Release
         uses: softprops/action-gh-release@v3
