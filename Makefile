@@ -7,10 +7,18 @@ build: ## Build the binary
 	go build -o build/aurumtax ./cmd/aurumtax
 
 build-all: ## Build binary for Windows, Mac, Linux
-	GOOS=windows GOARCH=amd64 go build -o build/aurumtax_windows_amd64.exe ./cmd/aurumtax
-	GOOS=darwin GOARCH=amd64 go build -o build/aurumtax_mac_amd64 ./cmd/aurumtax
-	GOOS=darwin GOARCH=arm64 go build -o build/aurumtax_mac_arm64 ./cmd/aurumtax
-	GOOS=linux GOARCH=amd64 go build -o build/aurumtax_linux_amd64 ./cmd/aurumtax
+	mkdir -p build/dist
+	GOOS=windows GOARCH=amd64 go build -o build/aurumtax.exe ./cmd/aurumtax
+	cd build && zip dist/aurumtax_windows_amd64.zip aurumtax.exe && rm aurumtax.exe
+	
+	GOOS=darwin GOARCH=amd64 go build -o build/aurumtax ./cmd/aurumtax
+	cd build && tar -czf dist/aurumtax_mac_amd64.tar.gz aurumtax && rm aurumtax
+	
+	GOOS=darwin GOARCH=arm64 go build -o build/aurumtax ./cmd/aurumtax
+	cd build && tar -czf dist/aurumtax_mac_arm64.tar.gz aurumtax && rm aurumtax
+	
+	GOOS=linux GOARCH=amd64 go build -o build/aurumtax ./cmd/aurumtax
+	cd build && tar -czf dist/aurumtax_linux_amd64.tar.gz aurumtax && rm aurumtax
 
 test: ## Run tests
 	go test ./... -p 8

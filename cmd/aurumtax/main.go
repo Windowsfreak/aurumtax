@@ -14,20 +14,97 @@ import (
 	"github.com/windowsfreak/aurumtax/internal/tax"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"path/filepath"
 )
 
 func main() {
 	app := tview.NewApplication()
 	app.EnableMouse(true)
 
+	// 1. Try current directory
 	prefixes := findPrefixes(".")
 
+	// 2. If nothing found, try the directory of the executable (common for macOS double-click)
 	if len(prefixes) == 0 {
-		modal := tview.NewModal().
-			SetText("Keine Datensätze (*_aurum_payments*.jsonl) im aktuellen Ordner gefunden.\nBitte navigiere in den Ordner mit deinen Export-Dateien.").
-			AddButtons([]string{"Beenden"}).
-			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		if exe, err := os.Executable(); err == nil {
+			exeDir := filepath.Dir(exe)
+			if exeDir != "." {
+				os.Chdir(exeDir)
+				prefixes = findPrefixes(".")
+			}
+		}
+	}
+
+	// 3. Define a function to show a directory browser
+	var showDirBrowser func(path string)
+	showDirBrowser = func(path string) {
+		files, err := os.ReadDir(path)
+		if err != nil {
+			showErr(app, err)
+			return
+		}
+
+		list := tview.NewList()
+		list.SetTitle(fmt.Sprintf(" Ordner auswählen: %s ", path)).SetBorder(true)
+		list.AddItem(".. (Zurück)", "In den übergeordneten Ordner wechseln", 'u', func() {
+			showDirBrowser(filepath.Dir(path))
+		})
+
+		for _, f := range files {
+			if f.IsDir() {
+				name := f.Name()
+				if strings.HasPrefix(name, ".") {
+					continue
+				}
+				list.AddItem(name+"/", "Ordner öffnen", 0, func() {
+					showDirBrowser(filepath.Join(path, name))
+				})
+			}
+		}
+
+		list.AddItem("Diesen Ordner wählen", "Nach .jsonl Dateien in diesem Ordner suchen", 's', func() {
+			absPath, _ := filepath.Abs(path)
+			os.Chdir(absPath)
+			newPrefixes := findPrefixes(".")
+			if len(newPrefixes) == 0 {
+				modal := tview.NewModal().
+					SetText(fmt.Sprintf("Keine Datensätze in %s gefunden.", path)).
+					AddButtons([]string{"Ok"}).
+					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						showDirBrowser(path)
+					})
+				app.SetRoot(modal, true)
+			} else {
+				// Restart with new prefixes (simple way to refresh UI)
+				main() 
+			}
+		})
+
+		list.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+			// Handled by individual items
+		})
+		
+		list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape {
 				app.Stop()
+			}
+			return event
+		})
+
+		app.SetRoot(list, true)
+	}
+
+	if len(prefixes) == 0 {
+		home, _ := os.UserHomeDir()
+		modal := tview.NewModal().
+			SetText("Keine Datensätze (*_aurum_payments*.jsonl) gefunden.\nBitte navigiere in den Ordner mit deinen Export-Dateien.").
+			AddButtons([]string{"Ordner suchen", "Beenden"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				if buttonIndex == 0 {
+					showDirBrowser(home)
+				} else {
+					app.Stop()
+				}
 			})
 		if err := app.SetRoot(modal, true).Run(); err != nil {
 			panic(err)
