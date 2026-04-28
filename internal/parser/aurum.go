@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -59,48 +60,66 @@ func ParsePrefix(prefix string) ([]domain.Payment, domain.UserBalances, error) {
 		}
 	}
 	
-	// Payments (JSONL)
-	payPath := fmt.Sprintf("%s_aurum_payments.jsonl", prefix)
-	f, err := os.Open(payPath)
-	if err != nil {
-		return nil, balances, domain.WrapError(err, "konnte Payments Datei %s nicht öffnen", payPath)
+	// Payments (JSONL) (Findet alle Dateien die passen)
+	matches, err := filepath.Glob(fmt.Sprintf("%s_aurum_payments*.jsonl", prefix))
+	if err != nil || len(matches) == 0 {
+		return nil, balances, domain.WrapError(err, "konnte keine Payments Dateien für %s finden", prefix)
 	}
-	defer f.Close()
 	
 	var payments []domain.Payment
-	scanner := bufio.NewScanner(f)
-	
-	// Um große Zeilen zu unterstützen
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-	
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		var p domain.Payment
-		if err := json.Unmarshal([]byte(line), &p); err != nil {
-			return nil, balances, domain.WrapError(err, "fehler in Zeile %d bei Payments", lineNum)
-		}
-		
-		// Filter out unsupported currencies wie in `script.js`
-		tickerOk := p.Ticker == "" || p.Ticker == "USDT" || p.Ticker == "USDC"
-		cryptoOk := p.CryptoTicker == "" || p.CryptoTicker == "USDT" || p.CryptoTicker == "USDC"
-		
-		rejectedCard := p.Kind == "CARD_RECHARGE" && p.StatusName == "transactions:REJECTED"
+	seenIDs := make(map[string]bool)
 
-		if tickerOk && cryptoOk && !rejectedCard {
-			payments = append(payments, p)
+	for _, payPath := range matches {
+		f, err := os.Open(payPath)
+		if err != nil {
+			return nil, balances, domain.WrapError(err, "konnte Payments Datei %s nicht öffnen", payPath)
 		}
-	}
 	
-	if err := scanner.Err(); err != nil {
-		return nil, balances, domain.WrapError(err, "fehler beim Lesen der Payments JSONL")
+		scanner := bufio.NewScanner(f)
+		
+		// Um große Zeilen zu unterstützen
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 1024*1024)
+		
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			var p domain.Payment
+			if err := json.Unmarshal([]byte(line), &p); err != nil {
+				f.Close()
+				return nil, balances, domain.WrapError(err, "fehler in Zeile %d bei Payments in Datei %s", lineNum, payPath)
+			}
+
+			// Deduplication
+			if p.ID != "" {
+				if seenIDs[p.ID] {
+					continue
+				}
+				seenIDs[p.ID] = true
+			}
+			
+			// Filter out unsupported currencies wie in `script.js`
+			tickerOk := p.Ticker == "" || p.Ticker == "USDT" || p.Ticker == "USDC"
+			cryptoOk := p.CryptoTicker == "" || p.CryptoTicker == "USDT" || p.CryptoTicker == "USDC"
+			
+			rejectedCard := p.Kind == "CARD_RECHARGE" && p.StatusName == "transactions:REJECTED"
+
+			if tickerOk && cryptoOk && !rejectedCard {
+				payments = append(payments, p)
+			}
+		}
+		
+		if err := scanner.Err(); err != nil {
+			f.Close()
+			return nil, balances, domain.WrapError(err, "fehler beim Lesen der Payments JSONL: %s", payPath)
+		}
+		f.Close()
 	}
-	
+
 	return payments, balances, nil
 }
 

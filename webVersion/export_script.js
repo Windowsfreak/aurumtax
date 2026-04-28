@@ -91,6 +91,14 @@
     <div style="max-width: 600px; margin: 0 auto; text-align: center; font-family: sans-serif; padding: 2rem;">
         <h2 style="margin-bottom: 1rem; color: #fff;">Zahlungsdaten Export (JSONL)</h2>
         <p style="margin-bottom: 2rem; color: #aaa;">Exportiert alle Zahlungen platzsparend im JSONL-Format. Der Download findet direkt beim Abrufen statt, um den Arbeitsspeicher zu schonen.</p>
+        
+        <div style="margin-bottom: 1.5rem; text-align: left; background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px;">
+            <label style="color: #ccc; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;" for="startPageInput">
+                <strong>Fortsetzen (Optional):</strong> Falls ein vorheriger Export abgebrochen ist, kannst du hier die Seite eintragen, bei der er gestoppt hat, um dort fortzusetzen.
+            </label>
+            <input type="number" id="startPageInput" value="0" min="0" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff;">
+        </div>
+
         <button id="startExportBtn" class="text-sm flex gap-2 items-center font-medium font-geologica justify-center rounded-[12px] px-4 py-2.5 transition duration-300 ease-in-out focus:outline-hidden bg-bg-color-main-theme-deep text-white w-full md:hover:bg-bg-color-main-theme-dark">
             Export starten
         </button>
@@ -109,7 +117,7 @@
     const progressText = document.getElementById('progressText');
 
     startBtn.addEventListener('click', async () => {
-        const token = localStorage.getItem("token");
+        let token = localStorage.getItem("token");
         if (!token) {
             alert("Fehler: No token found in localStorage.");
             return;
@@ -117,8 +125,38 @@
 
         const headers = {
             "Accept": "application/json",
-            "Authorization": `Bearer ${token}`
+            "Authorization": `Bearer ${token}`,
+            "X-Requested-With": "aurum-with"
         };
+
+        const startPageInput = document.getElementById('startPageInput');
+        const startPage = parseInt(startPageInput.value, 10) || 0;
+
+        async function doRefreshToken() {
+            const rfToken = localStorage.getItem("tokenRefresh");
+            if (!rfToken) throw new Error("Kein Refresh Token gefunden.");
+            
+            const r = await fetch("https://api.aurum.foundation/refresh", {
+                method: "POST",
+                headers: {
+                    "Accept": "application/json",
+                    "Authorization": `Bearer ${rfToken}`,
+                    "X-Requested-With": "aurum-with"
+                }
+            });
+            
+            if (!r.ok) throw new Error("Token refresh fetch failed.");
+            
+            const data = await r.json();
+            if (data && data.data && data.data.accessToken) {
+                localStorage.setItem("token", data.data.accessToken);
+                localStorage.setItem("tokenRefresh", data.data.refreshToken);
+                token = data.data.accessToken;
+                headers["Authorization"] = `Bearer ${token}`; // Update headers for subsequent requests!
+                return true;
+            }
+            throw new Error("Invalid response format on refresh.");
+        }
 
         startBtn.disabled = true;
         startBtn.className = "hover:cursor-not-allowed bg-bg-color-input hover:bg-bg-color-input text-text-color-placeholder text-sm flex gap-2 items-center font-medium font-geologica justify-center rounded-[12px] px-4 py-2.5 transition duration-300 ease-in-out w-full focus:outline-hidden";
@@ -185,7 +223,8 @@
                 downloadJSONFile(investData, `${nickname}_${dateStr}_aurum_investments.json`);
             }
             
-            const exportFileName = `${nickname}_${dateStr}_aurum_payments.jsonl`;
+            const pageModifier = startPage > 0 ? `_page${startPage}` : "";
+            const exportFileName = `${nickname}_${dateStr}_aurum_payments${pageModifier}.jsonl`;
 
             // Prepare writing stream or chunks
             let writableStream = null;
@@ -217,18 +256,47 @@
 
             const backoffs = [10, 20, 40, 80, 120, 240, 360, 480, 600];
             let chunkIdx = 1;
+            let currentChunkData = "";
+            let chunkPagesCount = 0;
+            const CHUNK_SIZE = 200; // Akkumuliere X Seiten pro Chunk
+
+            function downloadChunk(data, idx, isLastAndOnly) {
+                const blob = new Blob([data], { type: 'application/json' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                if (isLastAndOnly) {
+                    link.download = exportFileName;
+                } else {
+                    link.download = `${nickname}_${dateStr}_aurum_payments${pageModifier}_part${idx}.jsonl`;
+                }
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
 
             // Fetch payments
-            for (let page = 0; ; ++page) {
+            for (let page = startPage; ; ++page) {
                 let attempt = 0;
                 let resp;
                 
                 while (attempt < backoffs.length + 1) {
                     resp = await fetch(`https://api.aurum.foundation/payments?limit=30&page=${page}`, { headers });
 
-                    if (resp.status === 429 && attempt < backoffs.length) {
+                    if (resp.status === 401 && attempt < backoffs.length) {
+                        progressText.textContent = `Token abgelaufen, versuche Refresh... (Seite ${page})`;
+                        try {
+                            await doRefreshToken();
+                            attempt++;
+                            continue;
+                        } catch(e) {
+                            console.warn("Token refresh failed", e);
+                            throw new Error("Sitzung abgelaufen und Refresh fehlgeschlagen. Bitte logge dich neu ein.");
+                        }
+                    }
+
+                    if (resp.status >= 400 && attempt < backoffs.length) {
                         const waitSeconds = backoffs[attempt];
-                        progressText.textContent = `System überlastet, warte ${waitSeconds} Sekunden...`;
+                        progressText.textContent = `System überlastet (Code ${resp.status}), warte ${waitSeconds} Sekunden...`;
                         await delay(waitSeconds * 1000);
                         attempt++;
                         continue;
@@ -263,23 +331,26 @@
                     if (writableStream) {
                         await writableStream.write(jsonlStr);
                     } else if (useChunks) {
-                        const blob = new Blob([jsonlStr], { type: 'application/json' });
-                        const link = document.createElement("a");
-                        link.href = URL.createObjectURL(blob);
-                        // Add chunk numbers to file name
-                        link.download = `${nickname}_${dateStr}_aurum_payments_part${chunkIdx}.jsonl`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        chunkIdx++;
+                        currentChunkData += jsonlStr;
+                        chunkPagesCount++;
+                        
+                        if (chunkPagesCount >= CHUNK_SIZE) {
+                            downloadChunk(currentChunkData, chunkIdx, false);
+                            currentChunkData = "";
+                            chunkPagesCount = 0;
+                            chunkIdx++;
+                        }
                     }
                 }
 
-                if (json.page >= json.pages) break;
+                if (json.page >= json.pages || json.pages === 0) break;
             }
 
             if (writableStream) {
                 await writableStream.close();
+            } else if (useChunks && currentChunkData.length > 0) {
+                // If it is the first chunk and we finished, dont append _part1
+                downloadChunk(currentChunkData, chunkIdx, chunkIdx === 1);
             }
 
             progressBar.style.backgroundColor = '#3b82f6';

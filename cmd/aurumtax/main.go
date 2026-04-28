@@ -24,7 +24,7 @@ func main() {
 
 	if len(prefixes) == 0 {
 		modal := tview.NewModal().
-			SetText("Keine Datensätze (*_aurum_payments.jsonl) im aktuellen Ordner gefunden.\nBitte navigiere in den Ordner mit deinen Export-Dateien.").
+			SetText("Keine Datensätze (*_aurum_payments*.jsonl) im aktuellen Ordner gefunden.\nBitte navigiere in den Ordner mit deinen Export-Dateien.").
 			AddButtons([]string{"Beenden"}).
 			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 				app.Stop()
@@ -189,8 +189,9 @@ func findPrefixes(dir string) []string {
 	}
 	for _, f := range files {
 		name := f.Name()
-		if strings.HasSuffix(name, "_aurum_payments.jsonl") {
-			prefix := strings.TrimSuffix(name, "_aurum_payments.jsonl")
+		if strings.Contains(name, "_aurum_payments") && strings.HasSuffix(name, ".jsonl") {
+			idx := strings.Index(name, "_aurum_payments")
+			prefix := name[:idx]
 			prefixMap[prefix] = true
 		}
 	}
