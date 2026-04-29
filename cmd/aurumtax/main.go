@@ -204,7 +204,17 @@ func main() {
 			fxP := fx.NewECBProvider()
 			if !useUSDCheck.IsChecked() {
 				if err := fxP.Init("usd.xml"); err != nil {
-					// we just warn and proceed with what we have
+					app.QueueUpdateDraw(func() {
+						modal := tview.NewModal().
+							SetText(fmt.Sprintf("Warnung: Wechselkurse konnten nicht geladen werden.\nEs wird ein Kurs von 1:1 verwendet.\n\nFehler: %v", err)).
+							AddButtons([]string{"Verstanden"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								app.SetRoot(mainFlex, true)
+							})
+						app.SetRoot(modal, true)
+					})
+					// We still proceed in the background, but the user will see the warning.
+					// Or should we return? The original code proceeded.
 				}
 			}
 

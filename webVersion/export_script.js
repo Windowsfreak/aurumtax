@@ -147,7 +147,15 @@
             
             if (!r.ok) throw new Error("Token refresh fetch failed.");
             
-            const data = await r.json();
+            const rawData = await r.json();
+            let data;
+            if (rawData.encrypted) {
+                const decryptedStr = await cryptor.decode(rawData.encrypted);
+                data = JSON.parse(decryptedStr);
+            } else {
+                data = rawData;
+            }
+
             if (data && data.data && data.data.accessToken) {
                 localStorage.setItem("token", data.data.accessToken);
                 localStorage.setItem("tokenRefresh", data.data.refreshToken);

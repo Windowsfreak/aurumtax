@@ -10,8 +10,8 @@ import (
 	"github.com/windowsfreak/aurumtax/internal/domain"
 )
 
-type Envelope struct {
-	XMLName xml.Name `xml:"Envelope"`
+type CompactData struct {
+	XMLName xml.Name `xml:"CompactData"`
 	Series  []Series `xml:"DataSet>Series"`
 }
 
@@ -59,12 +59,12 @@ func (p *ECBProvider) Init(localCachePath string) error {
 		}
 	}
 	
-	var envelope Envelope
-	if err := xml.Unmarshal(data, &envelope); err != nil {
+	var compactData CompactData
+	if err := xml.Unmarshal(data, &compactData); err != nil {
 		return domain.WrapError(err, "fehler beim Parsen der ECB XML-Daten")
 	}
 	
-	for _, series := range envelope.Series {
+	for _, series := range compactData.Series {
 		for _, obs := range series.Obs {
 			if obs.TimePeriod != "" {
 				p.rates[obs.TimePeriod] = obs.ObsValue
